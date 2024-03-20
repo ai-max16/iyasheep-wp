@@ -11,48 +11,62 @@ class HeadspaScrapingController extends Controller
     public function scrape()
     {
         $client = new Client();
-        $baseURL = 'https://beauty.hotpepper.jp/genre/kgkw095/pre';
+        // 北海道のページからHTMLを取得
+        $response = $client->request('GET', 'https://beauty.hotpepper.jp/genre/kgkw095/pre01/');
 
-        // 各都道府県のページをループして処理
-        for ($i = 1; $i <= 47; $i++) {
-            $response = $client->request('GET', $baseURL . sprintf('%02d', $i) . '/');
-            $html = (string) $response->getBody();
-            $crawler = new Crawler($html);
+        $html = (string) $response->getBody();
 
-            // 各ページのページネーションを取得
-            $paginationLinks = $crawler->filter('.pagination > li > a')->each(function ($node) {
-                return $node->attr('href');
-            });
+        $crawler = new Crawler($html);
 
-            // 各ページネーションから詳細ページのURLを取得
-            foreach ($paginationLinks as $link) {
-                // HTTPリクエストの送信前に一定時間スリープさせる
-                sleep(2); // 2秒間のスリープ
+        // .slcHead 内のすべてのaタグを取得
+        $links = $crawler->filter('.slcHead a');
 
-                $response = $client->request('GET', 'https://beauty.hotpepper.jp' . $link);
-                $html = (string) $response->getBody();
-                $crawler = new Crawler($html);
+        // 各リンクに対してループ処理
+        $results = [];
+        foreach ($links as $link) {
+            $linkUrl = $link->getAttribute('href');
+            $response = $client->request('GET', $linkUrl);
+            $shopHtml = (string) $response->getBody();
+            $shopCrawler = new Crawler($shopHtml);
 
-                $detailPageLinks = $crawler->filter('h3 > a')->each(function ($node) {
-                    return $node->attr('href');
-                });
+            // 店舗名を取得
+            $titles = $shopCrawler->filter('.detailTitle a')->text();
 
-                // 各詳細ページから.detailTitleクラスを取得
-                foreach ($detailPageLinks as $detailLink) {
-                    // HTTPリクエストの送信前に一定時間スリープさせる
-                    sleep(2); // 2秒間のスリープ
+            // 住所を取得
+            $addresses = $shopCrawler->filter('.w620')->eq(1)->text();
 
-                    $response = $client->request('GET', 'https://beauty.hotpepper.jp' . $detailLink);
-                    $html = (string) $response->getBody();
-                    $crawler = new Crawler($html);
+            // アクセスを取得
+            $access = $shopCrawler->filter('.w620')->eq(2)->text();
 
-                    $detailTitles = $crawler->filter('.detailTitle')->each(function ($node) {
-                        return $node->text();
-                    });
+            // 営業時間を取得
+            $businessHours = $shopCrawler->filter('.w620')->eq(3)->text();
 
-                    dd($detailTitles);
-                }
-            }
+            // 定休日を取得
+            $regularHoliday = $shopCrawler->filter('.w620')->eq(4)->text();
+
+            // 人気メニューを3つ取得
+            $popularMenu1 = $shopCrawler->filter('.couponMenuName')->eq(1)->text();
+            $popularMenu2 = $shopCrawler->filter('.couponMenuName')->eq(2)->text();
+            $popularMenu3 = $shopCrawler->filter('.couponMenuName')->eq(3)->text();
+
+            // 画像ファイルパスを取得
+            $imagePath = $shopCrawler->filter('.slnTopImgViewer img')->first()->attr('src');
+
+            // 結果を配列に追加
+            $results[] = [
+                '店舗名' => $titles,
+                '住所' => $addresses,
+                'アクセス' => $access,
+                '営業時間' => $businessHours,
+                '定休日' => $regularHoliday,
+                '人気メニュー1' => $popularMenu1,
+                '人気メニュー2' => $popularMenu2,
+                '人気メニュー3' => $popularMenu3,
+                '店舗URL' => $linkUrl,
+                '画像ファイルパス' => $imagePath,
+            ];
         }
+
+        dd($results);
     }
 }
